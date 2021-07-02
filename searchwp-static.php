@@ -27,18 +27,8 @@ require __DIR__ . '/src/options.php';
 
 // Add schedule
 
-add_filter('cron_schedules',function($schedules){
-    if(!isset($schedules['30min'])){
-        $schedules['30min'] = [
-            'interval' => 30 * 60,
-            'display' => __('Once every 30 minutes')
-        ];
-    }
-    return $schedules;
-});
-
 if ( ! wp_next_scheduled( 'search_wp_static_sync' ) ) {
-    wp_schedule_event( time(), '30min', 'search_wp_static_sync' );
+    wp_schedule_event( time(), 'daily', 'search_wp_static_sync' );
 }
 
 // Unschedule on plugin disable

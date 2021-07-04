@@ -46,6 +46,8 @@ add_action( 'init', function() {
     add_action( 'search_wp_static_sync', function() {
         $urls = array_filter(array_map('trim', explode("\n", get_option('search_wp_static_urls'))));
 
+        $new_ids = [];
+
         foreach ($urls as $url) {
             $relative_url = wp_make_link_relative($url);
 
@@ -56,12 +58,6 @@ add_action( 'init', function() {
 
             $post_title = apply_filters( 'search_wp_static_post_title', null, $url );
             if (is_null($post_title)) {
-                // $res = preg_match("/<title>(.*)<\/title>/siU", $post_content, $title_matches);
-                // if ($res !== false) {
-                //     $post_title = preg_replace('/\s+/', ' ', $title_matches[1]);
-                //     $post_title = trim($post_title);
-                // }
-
                 $post_title = 'Redirect to ' . $relative_url;
             }
 
@@ -91,10 +87,13 @@ add_action( 'init', function() {
             }
 
             $new_id = wp_insert_post( $post_data );
+            $new_ids[] = $new_id;
 
             update_post_meta( $new_id, 'search_wp_static_redirect', $url );
             do_action('search_wp_static_post_updated', $new_id, $url);
         }
+
+        update_option( 'search_wp_static_post_ids', $new_ids );
     } );
 
     add_action( 'template_redirect', function() {
@@ -105,5 +104,97 @@ add_action( 'init', function() {
             wp_redirect( $redirect );
             exit;
         }
+    });
+});
+
+// Hide dummy page from all users except admin
+
+add_action('pre_get_posts', function( $wp_query ) {
+    global $pagenow;
+
+    if(!is_admin()) {
+        return;
+    }
+
+    if (current_user_can('administrator')) {
+        return;
+    }
+
+    if ($pagenow != 'edit.php') {
+        return;
+    }
+
+    if ($_GET['post_type'] != 'page') {
+        return;
+    }
+
+    $post_ids = (array)get_option('search_wp_static_post_ids');
+    $wp_query->set( 'post__not_in', $post_ids );
+
+    add_filter('views_edit-page', function($views) use ($post_ids, $wp_query) {
+        unset($views['mine']);
+
+        $types = array(
+            array( 'status' =>  NULL ),
+            array( 'status' => 'publish' ),
+            array( 'status' => 'draft' ),
+            array( 'status' => 'pending' ),
+            array( 'status' => 'trash' )
+        );
+        foreach( $types as $type ) {
+            $query = array(
+                'post__not_in' => $post_ids,
+                'post_type'   => 'post',
+                'post_status' => $type['status']
+            );
+            $result = new \WP_Query($query);
+            if( $type['status'] == NULL ):
+                $class = ($wp_query->query_vars['post_status'] == NULL) ? ' class="current"' : '';
+                $views['all'] = sprintf(
+                '<a href="%1$s"%2$s>%4$s <span class="count">(%3$d)</span></a>',
+                admin_url('edit.php?post_type=post'),
+                $class,
+                $result->found_posts,
+                __('All')
+            );
+            elseif( $type['status'] == 'publish' ):
+                $class = ($wp_query->query_vars['post_status'] == 'publish') ? ' class="current"' : '';
+                $views['publish'] = sprintf(
+                '<a href="%1$s"%2$s>%4$s <span class="count">(%3$d)</span></a>',
+                admin_url('edit.php?post_type=post'),
+                $class,
+                $result->found_posts,
+                __('Publish')
+            );
+            elseif( $type['status'] == 'draft' ):
+                $class = ($wp_query->query_vars['post_status'] == 'draft') ? ' class="current"' : '';
+                $views['draft'] = sprintf(
+                '<a href="%1$s"%2$s>%4$s <span class="count">(%3$d)</span></a>',
+                admin_url('edit.php?post_type=post'),
+                $class,
+                $result->found_posts,
+                __('Draft')
+            );
+            elseif( $type['status'] == 'pending' ):
+                $class = ($wp_query->query_vars['post_status'] == 'pending') ? ' class="current"' : '';
+                $views['pending'] = sprintf(
+                '<a href="%1$s"%2$s>%4$s <span class="count">(%3$d)</span></a>',
+                admin_url('edit.php?post_type=post'),
+                $class,
+                $result->found_posts,
+                __('Pending')
+            );
+            elseif( $type['status'] == 'trash' ):
+                $class = ($wp_query->query_vars['post_status'] == 'trash') ? ' class="current"' : '';
+                $views['trash'] = sprintf(
+                '<a href="%1$s"%2$s>%4$s <span class="count">(%3$d)</span></a>',
+                admin_url('edit.php?post_type=post'),
+                $class,
+                $result->found_posts,
+                __('Trash')
+            );
+            endif;
+        }
+        return $views;
     });
 });

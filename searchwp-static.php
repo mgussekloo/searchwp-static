@@ -97,6 +97,14 @@ add_action( 'init', function() {
     } );
 
     add_action( 'template_redirect', function() {
+        if (!is_single('page')) {
+            return;
+        }
+
+        if (is_admin()) {
+            return;
+        }
+
         global $post;
 
         $redirect = get_post_meta( $post->ID , 'search_wp_static_redirect' , true );
